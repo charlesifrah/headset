@@ -61,8 +61,8 @@ export function ZoneCanvas({ mode, zones }: Props) {
       const r       = ZONE_RADIUS * scale;
 
       for (const zone of zonesRef.current) {
-        const cx = zone.x * scale + offsetX;
-        const cy = zone.y * scale + offsetY;
+        const cx = Math.round(zone.x * scale + offsetX);
+        const cy = Math.round(zone.y * scale + offsetY);
 
         if (mode === 'garden') {
           drawGardenZoneDecoration(ctx, cx, cy, r, zone.instability, t, scale);
