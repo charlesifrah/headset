@@ -9,5 +9,5 @@ const URL = import.meta.env.PROD
 
 export const socket: GameSocket = io(URL, {
   autoConnect: false,
-  transports: ['websocket'],
+  transports: ['polling', 'websocket'],
 });
