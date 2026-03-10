@@ -87,7 +87,6 @@ export function LobbyScreen({ onJoined, onDev }: Props) {
 
       {error && <p style={styles.error}>{error}</p>}
 
-      <button style={styles.devBtn} onClick={onDev}>Dev Preview</button>
     </div>
   );
 }
