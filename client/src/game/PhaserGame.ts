@@ -18,7 +18,10 @@ export function createPhaserGame(
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
-      zoom: 1 / window.devicePixelRatio,
+    },
+    render: {
+      antialias: true,
+      roundPixels: true,
     },
     scene: [],
   };
