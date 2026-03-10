@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lsof -ti :3001 | xargs kill -9 2>/dev/null; lsof -ti :5173 | xargs kill -9 2>/dev/null; echo \"done\")",
+      "Bash(npm run dev)",
+      "Bash(git init && git add . && git commit -m \"Initial commit — headset.life game\")"
+    ]
+  }
+}

@@ -1,0 +1,1010 @@
+MVP Spec
+Working title
+
+Shared Field
+
+Core idea
+
+Two players are connected to the same live simulation, but each sees a different reality.
+
+Player A sees a garden and believes they are growing plants.
+
+Player B sees a fire zone and believes they are putting out fires.
+
+Both players:
+
+move in the same map
+
+perform the same underlying action
+
+see each other in real time
+
+influence the same hidden variables
+
+receive different visual and textual interpretations
+
+The point of the game is to prove that two people can share consequences without sharing the same perception.
+
+Product goal
+
+Build a simple multiplayer web/mobile prototype that demonstrates:
+
+Two players can interact with the same system in real time
+
+Each player can see the other player’s actions
+
+Each player interprets those actions differently
+
+Both players feel like they are playing the same game
+
+A final reveal shows they were seeing different worlds
+
+This MVP should be small, stable, and easy to understand in under 2 minutes of play.
+
+MVP scope
+Included
+
+2-player real-time session
+
+Shared 2D map with 6 to 12 active zones
+
+One core action, spray/target interaction
+
+One shared hidden simulation layer
+
+Two perception layers, garden and fire
+
+Real-time mirrored player movement
+
+Real-time mirrored partner action effects
+
+Scoreboard per player, translated into their own worldview
+
+End-of-round reveal screen
+
+Not included
+
+voice chat
+
+matchmaking with strangers
+
+AI bots
+
+progression system
+
+inventory
+
+multiple levels
+
+accounts
+
+payments
+
+advanced physics
+
+replay video export
+
+Platforms
+Recommended MVP stack
+
+Build as a mobile-first web app that can also run well in desktop browsers.
+
+This gives:
+
+fast prototyping
+
+easy testing with links
+
+no App Store friction
+
+easier multiplayer deployment
+
+Technical recommendation
+
+Frontend: React + TypeScript
+
+Rendering: Phaser 3 or PixiJS
+
+Backend: Node.js + Socket.IO
+
+Realtime transport: WebSockets via Socket.IO
+
+Hosting: Vercel for frontend, Render/Fly.io/Railway for backend
+
+State store: In-memory for MVP, optional Redis later for room resilience
+
+If you want cross-platform native later:
+
+React Native + Expo can come after web proof of concept
+
+Core gameplay loop
+Round length
+
+60 to 90 seconds
+
+Player goal
+
+Keep the field stable by responding to active zones faster and more efficiently than the other player.
+
+What actually happens
+
+The hidden simulation has zones with an internal value called instability.
+
+Instability rises over time in random zones
+
+If a zone crosses thresholds, it visually escalates
+
+Players reduce instability by aiming and holding their spray action on that zone
+
+Stabilized zones improve the player’s contribution score
+
+Unchecked zones can spread instability to neighboring zones
+
+What Player A believes
+
+dry areas need water
+
+watering grows plants
+
+greener areas mean success
+
+partner is also watering plants
+
+score = plants grown / gardens saved
+
+What Player B believes
+
+burning areas need suppression
+
+spraying puts out fires
+
+smoke clearing means success
+
+partner is also extinguishing fires
+
+score = fires extinguished / sectors saved
+
+Core design principle
+
+There is only one game state.
+
+There are two presentation layers.
+
+Never create separate logic for each worldview.
+Only translate the same shared state into two different visual and language systems.
+
+This keeps the illusion clean and the code maintainable.
+
+Hidden simulation model
+Field
+
+A field contains a set of zones.
+
+Example:
+
+9 zones in a 3x3 layout
+
+each zone has a hidden instability value from 0 to 100
+
+Zone thresholds
+
+0–24: calm
+
+25–49: emerging issue
+
+50–74: active problem
+
+75–100: critical problem
+
+Zone behavior
+
+Every tick:
+
+instability increases slightly in random zones
+
+neighboring zones may receive spillover if a zone is above critical threshold
+
+player action reduces instability while applied
+
+Hidden meaning
+
+This is the only truth the server cares about:
+
+zone instability
+
+player proximity
+
+action uptime
+
+contribution values
+
+round timer
+
+Everything else is client interpretation.
+
+Perception mapping
+Player A, Garden mode
+
+Map hidden instability to garden visuals:
+
+0–24 → healthy soil / blooming plants
+
+25–49 → slightly dry / drooping leaves
+
+50–74 → wilting patch / brown edges
+
+75–100 → severely dry / near-dead growth
+
+Action effect:
+
+spray = watering
+
+instability reduction = hydration
+
+spillover = nearby dryness spreading
+
+Score labels:
+
+Plants Grown
+
+Garden Saves
+
+Water Efficiency
+
+Player B, Fire mode
+
+Map hidden instability to fire visuals:
+
+0–24 → safe ground / cooled area
+
+25–49 → embers / light smoke
+
+50–74 → active flames
+
+75–100 → severe blaze / heavy smoke
+
+Action effect:
+
+spray = extinguishing
+
+instability reduction = suppression
+
+spillover = fire spread
+
+Score labels:
+
+Fires Extinguished
+
+Sector Saves
+
+Suppression Efficiency
+
+Multiplayer behavior
+Critical requirement
+
+Each player must see the other player acting in real time.
+
+But the partner is always translated into the viewer’s own reality.
+
+Example
+
+Player B sprays a critical zone.
+
+B sees: foam or water extinguishing flames
+
+A sees: partner watering a withered patch and restoring growth
+
+Both are looking at the same event:
+
+same coordinates
+
+same duration
+
+same server effect
+
+different interpretation
+
+This is the core psychological mechanic.
+
+Player controls
+Mobile
+
+Left thumb: virtual joystick to move
+
+Right thumb: press and hold action button to spray
+
+Optional: drag aim direction while spraying
+
+Desktop
+
+WASD or arrow keys to move
+
+mouse or spacebar to spray
+
+cursor controls aim direction
+
+Simplified MVP input option
+
+If you want the fastest possible prototype:
+
+tap/click a zone to move toward it
+
+hold button to act on nearest zone
+
+That reduces control complexity and speeds up development.
+
+Screens
+1. Landing screen
+
+Purpose:
+
+start a session
+
+choose role for testing, or auto-assign
+
+Elements:
+
+game title
+
+“Create Game”
+
+“Join Game”
+
+room code input
+
+optional role toggle for debug:
+
+Garden View
+
+Fire View
+
+2. Waiting room
+
+Purpose:
+
+show both players connected
+
+assign each player their perception layer
+
+Elements:
+
+room code
+
+player connected states
+
+“Starting in 3...2...1”
+
+3. Gameplay screen
+
+Main elements:
+
+top timer
+
+top-left player score
+
+top-right partner score
+
+center playfield
+
+local avatar
+
+partner avatar
+
+active zones
+
+action button
+
+small event feed
+
+Example event feed text
+
+Player A sees:
+
+“Your partner helped revive a patch”
+
+“A bloom chain started”
+
+Player B sees:
+
+“Your partner helped contain a flare”
+
+“A suppression chain started”
+
+These messages come from the same underlying trigger.
+
+4. Results screen
+
+Displays:
+
+your final score
+
+partner score
+
+translated contribution summary
+
+“Reveal” button
+
+5. Reveal screen
+
+This is the philosophical payoff.
+
+Show:
+
+split panel with both worldviews
+
+shared hidden map in the center
+
+direct mapping examples:
+
+“Plants Grown” = “Fires Extinguished”
+
+“Dryness” = “Flare Intensity”
+
+“Watering” = “Suppression”
+
+Optional line:
+You were acting on the same system, through different realities.
+
+Core mechanics in detail
+1. Zone escalation
+
+The server periodically increases instability in zones.
+
+Pseudo behavior:
+
+every 500ms, choose 1 to 3 zones
+
+add +2 to +8 instability
+
+cap at 100
+
+2. Player action
+
+When player is:
+
+close enough to a zone
+
+aiming at that zone
+
+holding action
+
+Then server applies:
+
+instability reduction = X per tick
+
+Example:
+
+reduce by 8 per 250ms tick
+
+3. Spread
+
+If a zone remains above 75 too long:
+
+after N seconds, nearby zones gain +10 to +20 instability
+
+This creates urgency and visible chain reactions.
+
+4. Contribution scoring
+
+Each time a player reduces instability:
+
+assign contribution points proportional to reduction
+
+Each time a zone returns below a key threshold:
+
+award save / recovery points to the players who contributed recently
+
+This lets both players “compete” while still co-influencing the same field.
+
+Scoring model
+
+Use one hidden score model, translated differently per player.
+
+Hidden score metrics
+
+total instability reduced
+
+number of critical saves
+
+average response time
+
+active action time
+
+chain prevention count
+
+Garden labels
+
+Plants Grown = total instability reduced
+
+Garden Saves = critical saves
+
+Water Efficiency = total reduction / action time
+
+Bloom Chains = chain prevention count
+
+Fire labels
+
+Fires Extinguished = total instability reduced
+
+Sector Saves = critical saves
+
+Suppression Efficiency = total reduction / action time
+
+Flare Stops = chain prevention count
+
+The numbers can be identical. Only the labels differ.
+
+Networking model
+Server authoritative
+
+The server owns:
+
+room state
+
+timer
+
+player positions
+
+zone instability
+
+score calculations
+
+win state
+
+Clients only:
+
+send input
+
+render perception layer
+
+display translated UI
+
+This prevents desync and keeps both views aligned to the same truth.
+
+Realtime events
+
+Suggested socket events:
+
+Client to server
+
+create_room
+
+join_room
+
+player_ready
+
+input_move
+
+input_action_start
+
+input_action_stop
+
+ping_zone
+
+Server to client
+
+room_created
+
+room_joined
+
+match_start
+
+state_snapshot
+
+state_delta
+
+round_end
+
+reveal_payload
+
+Tick rates
+
+For MVP:
+
+simulation tick: every 250ms
+
+state broadcast: every 100ms to 200ms
+
+client interpolation for movement smoothing
+
+Data structures
+Room
+type Room = {
+  id: string
+  status: 'waiting' | 'playing' | 'ended'
+  createdAt: number
+  roundEndsAt: number | null
+  players: PlayerState[]
+  zones: ZoneState[]
+}
+PlayerState
+type PlayerState = {
+  id: string
+  socketId: string
+  role: 'garden' | 'fire'
+  x: number
+  y: number
+  aimX: number
+  aimY: number
+  isActing: boolean
+  score: HiddenScore
+}
+ZoneState
+type ZoneState = {
+  id: string
+  x: number
+  y: number
+  instability: number
+  lastContributors: {
+    playerId: string
+    contribution: number
+    timestamp: number
+  }[]
+}
+HiddenScore
+type HiddenScore = {
+  totalReduction: number
+  criticalSaves: number
+  actionTimeMs: number
+  chainPreventions: number
+}
+Frontend architecture
+Recommended structure
+
+GameShell
+
+LobbyScreen
+
+WaitingRoom
+
+GameScreen
+
+ResultsScreen
+
+RevealScreen
+
+Key game modules
+
+socketClient.ts
+
+gameRenderer.ts
+
+inputController.ts
+
+perceptionMapper.ts
+
+uiTranslator.ts
+
+Important abstraction
+
+Create a clean translator layer:
+
+type PerceptionMode = 'garden' | 'fire'
+
+function mapZoneVisual(instability: number, mode: PerceptionMode) {
+  // returns sprite state, label, effects
+}
+
+function mapScoreLabels(hiddenScore: HiddenScore, mode: PerceptionMode) {
+  // returns translated labels for UI
+}
+
+Do not hardcode fire/garden logic across the app.
+Keep all translation centralized.
+
+Art direction for MVP
+
+Keep visuals simple. Do not overbuild art first.
+
+Garden mode
+
+green, tan, soft blue palette
+
+circles or tiles for patches
+
+simple plant growth states, 3 to 4 levels
+
+water spray particle line
+
+soft positive sound cues
+
+Fire mode
+
+dark gray, red, orange palette
+
+same tile layout
+
+ember/flame states, 3 to 4 levels
+
+spray particle line, same mechanic
+
+sharper urgent sound cues
+
+Shared geometry
+
+Use the exact same:
+
+map layout
+
+avatar positions
+
+zone radii
+
+effect timing
+
+Only swap:
+
+textures
+
+particles
+
+labels
+
+sounds
+
+That preserves one true system underneath.
+
+UX rules
+Rule 1
+
+Both players must feel like the game is coherent in their own view.
+
+Rule 2
+
+Neither player should suspect immediately that the other sees a different world.
+
+Rule 3
+
+All partner actions must make sense in the local player’s language.
+
+Rule 4
+
+The reveal must clearly map one reality to the other.
+
+If the reveal is weak, the whole concept weakens.
+
+MVP user flow
+Player 1
+
+Opens link
+
+Taps Create Game
+
+Receives room code
+
+Shares code
+
+Player 2
+
+Opens link
+
+Enters room code
+
+Joins session
+
+Both
+
+Wait in room
+
+Game auto-starts
+
+Play one 60–90 second round
+
+See local score + partner score
+
+End round
+
+Tap Reveal
+
+Discover different realities
+
+This is enough for the first proof of concept.
+
+Acceptance criteria
+Multiplayer
+
+two players can join the same room reliably
+
+each player sees the other avatar moving within 200ms perceived latency
+
+each player sees partner action effects in real time
+
+Shared simulation
+
+both clients reference the same zone positions and hidden instability values
+
+player actions reduce the same hidden values on the server
+
+scores are derived from the same underlying metrics
+
+Perception split
+
+Player A sees garden assets and labels only
+
+Player B sees fire assets and labels only
+
+partner actions are translated correctly into each player’s local view
+
+Reveal
+
+after round end, both players can view the mapping between the two realities
+
+at least 3 score or event mappings are shown clearly
+
+Development phases
+Phase 1, Prototype the hidden engine
+
+Build:
+
+room creation
+
+2-player socket connection
+
+shared map
+
+zones with instability
+
+movement
+
+action reducing instability
+
+Use placeholder circles and colors only.
+
+Phase 2, Add perception layers
+
+Build:
+
+garden skin
+
+fire skin
+
+translated labels
+
+partner action translation
+
+Phase 3, Add reveal
+
+Build:
+
+end-of-round results
+
+simple split-screen comparison
+
+explicit mapping copy
+
+Phase 4, Polish
+
+Build:
+
+juice, particles, sound, onboarding text
+
+mobile control cleanup
+
+reconnect handling
+
+Suggested team breakdown
+Frontend engineer
+
+React app shell
+
+Phaser/Pixi scene
+
+mobile controls
+
+UI screens
+
+perception mapper integration
+
+Backend engineer
+
+room/session logic
+
+Socket.IO server
+
+authoritative simulation
+
+scoring
+
+end-of-round reveal payload
+
+Designer, optional for MVP
+
+two visual skins
+
+icon language
+
+readable reveal screen
+
+One strong full-stack developer could build the MVP alone.
+
+Risks and mitigation
+Risk
+
+Players immediately realize the trick.
+
+Fix
+
+Keep vocabulary parallel and avoid obvious contradiction during gameplay.
+
+Risk
+
+Multiplayer sync feels laggy.
+
+Fix
+
+Server authoritative state with client interpolation, keep map small.
+
+Risk
+
+Too much control complexity on mobile.
+
+Fix
+
+Use simplified tap-to-zone or nearest-zone action for MVP.
+
+Risk
+
+Concept feels like only a visual reskin.
+
+Fix
+
+Make the reveal explicitly show that all scores and events were shared underneath.
+
+Best ultra-simple MVP variant
+
+If you want the fastest possible build, make it even simpler:
+
+fixed 3x3 grid
+
+players do not free-move
+
+each player taps zones directly
+
+hold to apply action
+
+same zone state underneath
+
+live cursor indicators show where the partner is acting
+
+each player sees their own translated effects
+
+end reveal maps all actions
+
+This version can still prove the idea with far less engineering.
+
+Suggested first build target
+
+Build this first:
+
+A 2-player browser prototype with a 3x3 grid, 60-second round, tap-and-hold action, garden/fire perception split, live partner indicators, and a reveal screen.
+
+That is the fastest route to proving the concept.
+
+Developer handoff summary
+Build objective
+
+Create a 2-player real-time browser game where both users interact with the same hidden zone-stability simulation, but one client renders the simulation as plant growth and the other renders it as fire suppression.
+
+Non-negotiables
+
+one authoritative shared simulation
+
+two perception layers
+
+real-time visible partner actions
+
+translated scoreboards
+
+end-of-round reveal
+
+Success definition
+
+If two players finish one round and say:
+
+“I thought we were growing plants”
+
+“I thought we were putting out fires”
+
+“Wait, those were the same actions?”
+
+then the MVP succeeded.
