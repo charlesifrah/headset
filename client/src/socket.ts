@@ -4,7 +4,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from '@shared-field/s
 export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 const URL = import.meta.env.PROD
-  ? window.location.origin
+  ? 'https://shared-fieldserver-production.up.railway.app'
   : 'http://localhost:3001';
 
 export const socket: GameSocket = io(URL, {
