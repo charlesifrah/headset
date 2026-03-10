@@ -1,0 +1,10 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "buildCommand": "npm install && npm run build -w shared && npm run build -w server"
+  },
+  "deploy": {
+    "startCommand": "npm run start -w server",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
