@@ -15,11 +15,21 @@ export function LobbyScreen({ onJoined, onDev }: Props) {
   useEffect(() => {
     if (!socket.connected) socket.connect();
 
-    const onCreated = (data: { roomId: string; playerId: string; role: 'garden' | 'fire' }) => {
-      onJoined({ roomId: data.roomId, playerId: data.playerId, role: data.role });
+    const onCreated = (data: { roomId: string; playerId: string; role: 'garden' | 'fire'; partnerPresent: boolean }) => {
+      onJoined({
+        roomId: data.roomId,
+        playerId: data.playerId,
+        role: data.role,
+        initialPartnerPresent: data.partnerPresent,
+      });
     };
-    const onJoinedRoom = (data: { roomId: string; playerId: string; role: 'garden' | 'fire' }) => {
-      onJoined({ roomId: data.roomId, playerId: data.playerId, role: data.role });
+    const onJoinedRoom = (data: { roomId: string; playerId: string; role: 'garden' | 'fire'; partnerPresent: boolean }) => {
+      onJoined({
+        roomId: data.roomId,
+        playerId: data.playerId,
+        role: data.role,
+        initialPartnerPresent: data.partnerPresent,
+      });
     };
     const onError = (data: { message: string }) => {
       setError(data.message);
@@ -29,6 +39,19 @@ export function LobbyScreen({ onJoined, onDev }: Props) {
     socket.on('room_created', onCreated);
     socket.on('room_joined', onJoinedRoom);
     socket.on('error', onError);
+
+    // Auto-join when arriving via ?room=XXXX invite link
+    const params = new URLSearchParams(window.location.search);
+    const incoming = params.get('room')?.toUpperCase();
+    if (incoming) {
+      setRoomCode(incoming);
+      setMode('joining');
+      // Strip the param so a refresh after disconnect doesn't loop-rejoin
+      window.history.replaceState({}, '', window.location.pathname);
+      const tryJoin = () => socket.emit('join_room', incoming);
+      if (socket.connected) tryJoin();
+      else socket.once('connect', tryJoin);
+    }
 
     return () => {
       socket.off('room_created', onCreated);

@@ -1,17 +1,23 @@
+import { memo } from 'react';
 import type { GameContext } from '../App';
-import type { StateSnapshot } from '@shared-field/shared';
+import type { PerceptionMode, StateSnapshot } from '@shared-field/shared';
 import { INSTABILITY_MAX } from '@shared-field/shared';
 import { getRoleName } from '../perception/perceptionMapper';
 import { translateScore } from '../perception/uiTranslator';
 
-type Props = {
-  gameCtx: GameContext;
-  snapshot: StateSnapshot | null;
+type ScoreLine = { label: string; value: number | string };
+
+// Pre-derived, display-ready HUD state. Decoupling this from the raw snapshot
+// lets GameScreen skip HUD updates when none of the *visible* values changed,
+// so the HUD no longer reconciles 6-7×/sec just because positions moved.
+export type HudModel = {
+  timeLeft: number;
+  healthPct: number;
+  myScore: ScoreLine[];
+  partnerScore: ScoreLine[] | null;
 };
 
-export function GameHUD({ gameCtx, snapshot }: Props) {
-  if (!snapshot) return null;
-
+export function deriveHud(snapshot: StateSnapshot, gameCtx: GameContext): HudModel {
   const me = snapshot.players.find((p) => p.id === gameCtx.playerId);
   const partner = snapshot.players.find((p) => p.id !== gameCtx.playerId);
 
@@ -21,17 +27,56 @@ export function GameHUD({ gameCtx, snapshot }: Props) {
 
   const totalInstability = snapshot.zones.reduce((sum, z) => sum + z.instability, 0);
   const maxTotal = snapshot.zones.length * INSTABILITY_MAX;
-  const healthPct = Math.round(((maxTotal - totalInstability) / maxTotal) * 100);
+  const healthPct = maxTotal > 0
+    ? Math.round(((maxTotal - totalInstability) / maxTotal) * 100)
+    : 100;
+
+  return {
+    timeLeft,
+    healthPct,
+    myScore: me ? translateScore(me.score, gameCtx.role).all : [],
+    partnerScore: partner ? translateScore(partner.score, gameCtx.role).all : null,
+  };
+}
+
+function sameScore(a: ScoreLine[] | null, b: ScoreLine[] | null): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    // Labels are static per role; only the values change.
+    if (a[i].value !== b[i].value) return false;
+  }
+  return true;
+}
+
+// True when two HUD models would render identically — used to hold the previous
+// reference so the memoized HUD doesn't re-render.
+export function hudEqual(a: HudModel | null, b: HudModel): boolean {
+  if (!a) return false;
+  return (
+    a.timeLeft === b.timeLeft &&
+    a.healthPct === b.healthPct &&
+    sameScore(a.myScore, b.myScore) &&
+    sameScore(a.partnerScore, b.partnerScore)
+  );
+}
+
+type Props = {
+  role: PerceptionMode;
+  hud: HudModel | null;
+};
+
+function GameHUDComponent({ role, hud }: Props) {
+  if (!hud) return null;
+
+  const { timeLeft, healthPct, myScore, partnerScore } = hud;
 
   const healthColor =
     healthPct > 70 ? '#4ade80' :
     healthPct > 40 ? '#fbbf24' :
     '#ef4444';
 
-  const isGarden = gameCtx.role === 'garden';
-  const myScore = me ? translateScore(me.score, gameCtx.role) : null;
-  const partnerScore = partner ? translateScore(partner.score, gameCtx.role) : null;
-
+  const isGarden = role === 'garden';
   const roleIcon = isGarden ? '\u{1F331}' : '\u{1F692}';
 
   return (
@@ -40,7 +85,7 @@ export function GameHUD({ gameCtx, snapshot }: Props) {
       <div style={styles.topBar}>
         <div style={styles.roleChip}>
           <span style={styles.roleIcon}>{roleIcon}</span>
-          {getRoleName(gameCtx.role)}
+          {getRoleName(role)}
         </div>
 
         <div style={styles.timerWrap}>
@@ -69,7 +114,7 @@ export function GameHUD({ gameCtx, snapshot }: Props) {
       <div style={styles.scorePanel}>
         <div style={styles.scorePanelInner}>
           <div style={styles.scoreHeader}>Your Score</div>
-          {myScore && myScore.all.map((s) => (
+          {myScore.map((s) => (
             <div key={s.label} style={styles.scoreLine}>
               <span style={styles.scoreLineLabel}>{s.label}</span>
               <span style={styles.scoreLineValue}>{s.value}</span>
@@ -80,7 +125,7 @@ export function GameHUD({ gameCtx, snapshot }: Props) {
         {partnerScore && (
           <div style={{ ...styles.scorePanelInner, opacity: 0.6 }}>
             <div style={styles.scoreHeader}>Partner</div>
-            {partnerScore.all.map((s) => (
+            {partnerScore.map((s) => (
               <div key={s.label} style={styles.scoreLine}>
                 <span style={styles.scoreLineLabel}>{s.label}</span>
                 <span style={styles.scoreLineValue}>{s.value}</span>
@@ -92,6 +137,10 @@ export function GameHUD({ gameCtx, snapshot }: Props) {
     </div>
   );
 }
+
+// Memoized: GameScreen feeds a stable `hud` reference (held via hudEqual) and a
+// primitive `role`, so this only re-renders when a displayed value changes.
+export const GameHUD = memo(GameHUDComponent);
 
 const styles: Record<string, React.CSSProperties> = {
   overlay: {

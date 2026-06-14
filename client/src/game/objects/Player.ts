@@ -15,7 +15,13 @@ export class PlayerObject extends Phaser.GameObjects.Container {
   private actingPulse = 0;
   private bobPhase = Math.random() * Math.PI * 2;
   private lastActingState = false;
-  private bodyDrawn = false;
+  private lastBodyDraw = -1;
+  // Timestamped position buffer for partner interpolation. We render the partner
+  // ~one broadcast interval in the past and lerp between bracketing samples, so
+  // ~6.6Hz network updates play back smoothly instead of stepping/teleporting.
+  private buffer: { t: number; x: number; y: number }[] = [];
+  private static readonly INTERP_DELAY_MS = 150;
+  private static readonly BODY_REDRAW_MS = 100;
 
   constructor(
     scene: Phaser.Scene,
@@ -281,6 +287,25 @@ export class PlayerObject extends Phaser.GameObjects.Container {
     this.targetY = newY;
   }
 
+  // Partner only: record a freshly-arrived snapshot position for interpolation.
+  // Call once per new snapshot (not every frame), else the buffer fills with
+  // duplicate samples and the render delay collapses.
+  pushSnapshot(newX: number, newY: number) {
+    this.targetX = newX;
+    this.targetY = newY;
+    this.buffer.push({ t: performance.now(), x: newX, y: newY });
+    if (this.buffer.length > 8) this.buffer.shift();
+  }
+
+  // Drop buffered history and snap to the latest known position. Used when the
+  // tab regains focus, so stale timestamps don't make the partner crawl across
+  // the gap that opened while the page was hidden.
+  resetInterpolation() {
+    this.buffer.length = 0;
+    this.x = this.targetX;
+    this.y = this.targetY;
+  }
+
   moveLocal(newX: number, newY: number) {
     this.x = newX;
     this.y = newY;
@@ -288,6 +313,42 @@ export class PlayerObject extends Phaser.GameObjects.Container {
 
   setActing(acting: boolean) {
     this._isActing = acting;
+  }
+
+  // Render the partner at (now - INTERP_DELAY_MS), interpolating between the two
+  // buffered samples that bracket that render time. If we've run past the newest
+  // sample (packet starvation), ease toward it instead of freezing then snapping.
+  private interpolatePartner(delta: number) {
+    const buf = this.buffer;
+    if (buf.length === 0) return;
+
+    const renderTime = performance.now() - PlayerObject.INTERP_DELAY_MS;
+
+    if (renderTime <= buf[0].t) {
+      this.x = buf[0].x;
+      this.y = buf[0].y;
+      return;
+    }
+
+    const last = buf[buf.length - 1];
+    if (renderTime >= last.t) {
+      const lerpFactor = 1 - Math.pow(0.001, delta / 1000);
+      this.x = Phaser.Math.Linear(this.x, last.x, lerpFactor);
+      this.y = Phaser.Math.Linear(this.y, last.y, lerpFactor);
+      return;
+    }
+
+    for (let i = 0; i < buf.length - 1; i++) {
+      const a = buf[i];
+      const b = buf[i + 1];
+      if (renderTime >= a.t && renderTime <= b.t) {
+        const span = b.t - a.t;
+        const f = span > 0 ? (renderTime - a.t) / span : 0;
+        this.x = a.x + (b.x - a.x) * f;
+        this.y = a.y + (b.y - a.y) * f;
+        return;
+      }
+    }
   }
 
   preUpdate(time: number, delta: number) {
@@ -301,15 +362,14 @@ export class PlayerObject extends Phaser.GameObjects.Container {
         this.y += driftY * correction;
       }
     } else {
-      const lerpFactor = 1 - Math.pow(0.001, delta / 1000);
-      this.x = Phaser.Math.Linear(this.x, this.targetX, lerpFactor);
-      this.y = Phaser.Math.Linear(this.y, this.targetY, lerpFactor);
+      this.interpolatePartner(delta);
     }
 
-    // Draw body once, then only redraw on acting state change
-    if (!this.bodyDrawn) {
-      this.bodyDrawn = true;
-      this.drawBody(0);
+    // Redraw the body on a throttle so the bob, tool sway, and acting water
+    // animation play during the match (cheap: ~10 redraws/sec per player).
+    if (this.lastBodyDraw < 0 || time - this.lastBodyDraw >= PlayerObject.BODY_REDRAW_MS) {
+      this.lastBodyDraw = time;
+      this.drawBody(time);
     }
 
     if (this._isActing !== this.lastActingState) {

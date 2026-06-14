@@ -3,6 +3,7 @@ import type { GameContext } from '../App';
 import type { RevealPayload } from '@shared-field/shared';
 import { AvatarCanvas } from './AvatarCanvas';
 import { GamePreview } from './GamePreview';
+import { translateScore } from '../perception/uiTranslator';
 
 type Props = {
   gameCtx: GameContext;
@@ -28,6 +29,34 @@ export function RevealScreen({ gameCtx, data, onPlayAgain }: Props) {
     [data.zones],
   );
 
+  const yourMode = isGarden ? 'garden' as const : 'fire' as const;
+  const partnerMode = isGarden ? 'fire' as const : 'garden' as const;
+
+  const yourScore = isGarden ? data.gardenPlayer.score : data.firePlayer.score;
+  const partnerScore = isGarden ? data.firePlayer.score : data.gardenPlayer.score;
+
+  // Translate each player's score through THEIR OWN role. The reveal is showing
+  // the partner's actual reality, not your perspective on it.
+  const yourTranslated = useMemo(() => translateScore(yourScore, yourMode), [yourScore, yourMode]);
+  const partnerTranslated = useMemo(
+    () => translateScore(partnerScore, partnerMode),
+    [partnerScore, partnerMode],
+  );
+
+  // Mapping rows pair the same metric from each worldview. translateScore
+  // returns the four metrics in the same order regardless of role, so we can
+  // zip by index.
+  const mappingRows = useMemo(
+    () =>
+      yourTranslated.all.map((you, i) => ({
+        yourLabel: you.label,
+        yourValue: you.value,
+        partnerLabel: partnerTranslated.all[i].label,
+        partnerValue: partnerTranslated.all[i].value,
+      })),
+    [yourTranslated, partnerTranslated],
+  );
+
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     timers.push(setTimeout(() => setPhase(1), 800));
@@ -35,17 +64,12 @@ export function RevealScreen({ gameCtx, data, onPlayAgain }: Props) {
     timers.push(setTimeout(() => setPhase(3), 4200));
     timers.push(setTimeout(() => {
       setPhase(4);
-      data.mappings.forEach((_, i) => {
+      mappingRows.forEach((_, i) => {
         timers.push(setTimeout(() => setVisibleMappings(i + 1), 500 * (i + 1)));
       });
     }, 5600));
     return () => timers.forEach(clearTimeout);
-  }, [data.mappings]);
-
-  const fmt = (v: number) => Math.round(v);
-
-  const yourMode = isGarden ? 'garden' as const : 'fire' as const;
-  const partnerMode = isGarden ? 'fire' as const : 'garden' as const;
+  }, [mappingRows]);
 
   return (
     <div style={styles.page}>
@@ -92,12 +116,10 @@ export function RevealScreen({ gameCtx, data, onPlayAgain }: Props) {
                 {isGarden ? 'Garden' : 'Fire'} View
               </h3>
               <div style={styles.scoreList}>
-                {data.mappings.map((m) => (
-                  <div key={m.gardenLabel} style={styles.scoreLine}>
-                    <span style={styles.scoreKey}>
-                      {isGarden ? m.gardenLabel : m.fireLabel}
-                    </span>
-                    <span style={styles.scoreVal}>{fmt(m.value)}</span>
+                {yourTranslated.all.map((s) => (
+                  <div key={s.label} style={styles.scoreLine}>
+                    <span style={styles.scoreKey}>{s.label}</span>
+                    <span style={styles.scoreVal}>{s.value}</span>
                   </div>
                 ))}
               </div>
@@ -128,12 +150,10 @@ export function RevealScreen({ gameCtx, data, onPlayAgain }: Props) {
                 {!isGarden ? 'Garden' : 'Fire'} View
               </h3>
               <div style={styles.scoreList}>
-                {data.mappings.map((m) => (
-                  <div key={m.fireLabel} style={styles.scoreLine}>
-                    <span style={styles.scoreKey}>
-                      {!isGarden ? m.gardenLabel : m.fireLabel}
-                    </span>
-                    <span style={styles.scoreVal}>{fmt(m.value)}</span>
+                {partnerTranslated.all.map((s) => (
+                  <div key={s.label} style={styles.scoreLine}>
+                    <span style={styles.scoreKey}>{s.label}</span>
+                    <span style={styles.scoreVal}>{s.value}</span>
                   </div>
                 ))}
               </div>
@@ -157,7 +177,7 @@ export function RevealScreen({ gameCtx, data, onPlayAgain }: Props) {
         {/* --- Mapping rows --- */}
         {phase >= 4 && (
           <div style={styles.mappingBox}>
-            {data.mappings.map((m, i) => (
+            {mappingRows.map((row, i) => (
               <div
                 key={i}
                 style={{
@@ -168,12 +188,14 @@ export function RevealScreen({ gameCtx, data, onPlayAgain }: Props) {
                     : 'translateY(12px) scale(0.95)',
                 }}
               >
-                <span style={{ ...styles.mapSide, color: isGarden ? '#4ade80' : '#f97316', textAlign: 'right' as const }}>
-                  {isGarden ? m.gardenLabel : m.fireLabel}
+                <span style={{ ...styles.mapLabel, color: isGarden ? '#4ade80' : '#f97316', textAlign: 'right' as const }}>
+                  {row.yourLabel}
                 </span>
-                <span style={styles.mapValue}>{fmt(m.value)}</span>
-                <span style={{ ...styles.mapSide, color: isGarden ? '#f97316' : '#4ade80', textAlign: 'left' as const }}>
-                  {isGarden ? m.fireLabel : m.gardenLabel}
+                <span style={styles.mapValue}>{row.yourValue}</span>
+                <span style={styles.mapEquals}>≡</span>
+                <span style={styles.mapValue}>{row.partnerValue}</span>
+                <span style={{ ...styles.mapLabel, color: isGarden ? '#f97316' : '#4ade80', textAlign: 'left' as const }}>
+                  {row.partnerLabel}
                 </span>
               </div>
             ))}
@@ -181,7 +203,7 @@ export function RevealScreen({ gameCtx, data, onPlayAgain }: Props) {
         )}
 
         {/* --- Tagline + Play Again --- */}
-        {phase >= 4 && visibleMappings >= data.mappings.length && (
+        {phase >= 4 && visibleMappings >= mappingRows.length && (
           <div style={styles.footer}>
             <p style={styles.tagline}>
               You were acting on the same system, through different realities.
@@ -350,27 +372,34 @@ const styles: Record<string, React.CSSProperties> = {
     backdropFilter: 'blur(8px)',
     borderRadius: 14,
     padding: '12px 0',
-    minWidth: 380,
+    minWidth: 480,
   },
   mappingRow: {
     display: 'flex',
     alignItems: 'center',
     padding: '14px 20px',
+    gap: 10,
     transition: 'all 0.5s cubic-bezier(0.4,0,0.2,1)',
     borderBottom: '1px solid rgba(30,41,59,0.4)',
   },
-  mapSide: {
+  mapLabel: {
     flex: 1,
     fontSize: 14,
     fontWeight: 600,
   },
   mapValue: {
-    width: 56,
+    minWidth: 36,
     textAlign: 'center' as const,
     fontSize: 18,
     fontWeight: 800,
     flexShrink: 0,
     color: '#fbbf24',
+  },
+  mapEquals: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: 'rgba(255,255,255,0.4)',
+    flexShrink: 0,
   },
 
   // --- Footer ---

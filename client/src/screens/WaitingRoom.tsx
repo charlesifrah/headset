@@ -9,11 +9,20 @@ type Props = {
 };
 
 export function WaitingRoom({ gameCtx, onMatchStart }: Props) {
-  const [partnerConnected, setPartnerConnected] = useState(false);
+  const [partnerConnected, setPartnerConnected] = useState(gameCtx.initialPartnerPresent);
+  const [iAmReady, setIAmReady] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [copied, setCopied] = useState<'url' | 'code' | null>(null);
+
+  // The inviter created the room and was alone at first. The invitee joined
+  // into an already-populated room. Only the invitee presses Play; the inviter
+  // is implicitly ready (server-side) and just waits.
+  const isInviter = !gameCtx.initialPartnerPresent;
 
   useEffect(() => {
-    const onPlayerJoined = () => setPartnerConnected(true);
+    const onPlayerJoined = (data: { playerId: string }) => {
+      if (data.playerId !== gameCtx.playerId) setPartnerConnected(true);
+    };
     const onCountdown = (data: { seconds: number }) => setCountdown(data.seconds);
     const onStart = () => onMatchStart();
 
@@ -21,36 +30,89 @@ export function WaitingRoom({ gameCtx, onMatchStart }: Props) {
     socket.on('match_countdown', onCountdown);
     socket.on('match_start', onStart);
 
-    socket.emit('player_ready');
-
     return () => {
       socket.off('player_joined', onPlayerJoined);
       socket.off('match_countdown', onCountdown);
       socket.off('match_start', onStart);
     };
-  }, [onMatchStart]);
+  }, [onMatchStart, gameCtx.playerId]);
+
+  const handlePlay = () => {
+    if (iAmReady) return;
+    setIAmReady(true);
+    socket.emit('player_ready');
+  };
 
   const isGarden = gameCtx.role === 'garden';
   const accentColor = isGarden ? '#4ade80' : '#f97316';
+
+  const inviteUrl = `${window.location.origin}/?room=${gameCtx.roomId}`;
+
+  const copy = async (text: string, kind: 'url' | 'code') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(kind);
+      setTimeout(() => setCopied((c) => (c === kind ? null : c)), 1500);
+    } catch {
+      // Clipboard write can fail (e.g. insecure context); surface a manual select fallback.
+      setCopied(null);
+    }
+  };
 
   return (
     <div style={styles.container}>
       {!partnerConnected ? (
         <>
-          <h2 style={styles.heading}>Waiting for Partner</h2>
-          <div style={styles.codeBox}>
-            <span style={styles.codeLabel}>Room Code</span>
-            <span style={styles.code}>{gameCtx.roomId}</span>
+          <h2 style={styles.heading}>Invite a Friend</h2>
+          <p style={styles.subHeading}>Send them this link — or share the code</p>
+
+          <div style={styles.inviteCard}>
+            <div style={styles.urlRow}>
+              <span style={styles.urlText} title={inviteUrl}>{inviteUrl}</span>
+              <button
+                style={{
+                  ...styles.copyBtn,
+                  background: copied === 'url' ? '#4ade80' : '#334155',
+                  color: copied === 'url' ? '#0b0f19' : '#eee',
+                }}
+                onClick={() => copy(inviteUrl, 'url')}
+              >
+                {copied === 'url' ? 'Copied' : 'Copy Link'}
+              </button>
+            </div>
+
+            <div style={styles.orDivider}>
+              <span style={styles.orLine} />
+              <span style={styles.orLabel}>or share code</span>
+              <span style={styles.orLine} />
+            </div>
+
+            <button
+              style={styles.codeButton}
+              onClick={() => copy(gameCtx.roomId, 'code')}
+              title="Click to copy"
+            >
+              <span style={styles.codeLabel}>Room Code</span>
+              <span style={styles.code}>{gameCtx.roomId}</span>
+              <span style={{
+                ...styles.codeCopiedTag,
+                opacity: copied === 'code' ? 1 : 0,
+              }}>
+                Copied
+              </span>
+            </button>
           </div>
-          <div style={styles.statusRow}>
-            <div style={{ ...styles.dot, background: '#4ade80' }} />
-            <span>You — connected</span>
+
+          <div style={styles.statusBlock}>
+            <div style={styles.statusRow}>
+              <div style={{ ...styles.dot, background: '#4ade80' }} />
+              <span>You — connected</span>
+            </div>
+            <div style={styles.statusRow}>
+              <div style={{ ...styles.dot, background: '#475569' }} />
+              <span>Partner — waiting...</span>
+            </div>
           </div>
-          <div style={styles.statusRow}>
-            <div style={{ ...styles.dot, background: '#475569' }} />
-            <span>Partner — waiting...</span>
-          </div>
-          <p style={styles.hint}>Share the room code with a friend to start</p>
         </>
       ) : (
         <>
@@ -132,8 +194,30 @@ export function WaitingRoom({ gameCtx, onMatchStart }: Props) {
 
           {countdown !== null ? (
             <p style={styles.countdown}>Starting in {countdown}...</p>
+          ) : isInviter ? (
+            <div style={styles.playSection}>
+              <p style={styles.playStatus}>Waiting for partner to press Play...</p>
+            </div>
           ) : (
-            <p style={styles.readyText}>Get ready...</p>
+            <div style={styles.playSection}>
+              <button
+                style={{
+                  ...styles.playBtn,
+                  background: iAmReady
+                    ? '#334155'
+                    : `linear-gradient(90deg, ${accentColor}, #fbbf24)`,
+                  color: iAmReady ? '#cbd5e1' : '#0b0f19',
+                  cursor: iAmReady ? 'default' : 'pointer',
+                }}
+                onClick={handlePlay}
+                disabled={iAmReady}
+              >
+                {iAmReady ? 'Ready' : 'Play'}
+              </button>
+              <p style={styles.playStatus}>
+                {iAmReady ? 'Starting...' : 'Read the rules, then press Play when ready'}
+              </p>
+            </div>
           )}
         </>
       )}
@@ -155,27 +239,114 @@ const styles: Record<string, React.CSSProperties> = {
   heading: {
     fontSize: 28,
     fontWeight: 600,
-    marginBottom: 8,
+    margin: 0,
   },
-  codeBox: {
+  subHeading: {
+    fontSize: 14,
+    opacity: 0.5,
+    margin: 0,
+    marginBottom: 4,
+  },
+  inviteCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    background: '#1e293b',
+    padding: 18,
+    borderRadius: 14,
+    gap: 14,
+    width: '100%',
+    maxWidth: 460,
+  },
+  urlRow: {
+    display: 'flex',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  urlText: {
+    flex: 1,
+    background: '#0f172a',
+    padding: '12px 14px',
+    borderRadius: 10,
+    fontSize: 13,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    color: '#cbd5e1',
+    border: '1px solid #334155',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+  },
+  copyBtn: {
+    padding: '0 18px',
+    fontSize: 13,
+    fontWeight: 700,
+    border: 'none',
+    borderRadius: 10,
+    cursor: 'pointer',
+    transition: 'background 0.2s, color 0.2s',
+    whiteSpace: 'nowrap' as const,
+    letterSpacing: 0.5,
+  },
+  orDivider: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  orLine: {
+    flex: 1,
+    height: 1,
+    background: 'rgba(255,255,255,0.08)',
+  },
+  orLabel: {
+    fontSize: 10,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 2,
+    opacity: 0.4,
+  },
+  codeButton: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    background: '#1e293b',
-    padding: '16px 32px',
-    borderRadius: 12,
+    background: '#0f172a',
+    padding: '14px 32px',
+    borderRadius: 10,
     gap: 4,
+    cursor: 'pointer',
+    border: '1px solid #334155',
+    transition: 'border-color 0.2s, background 0.2s',
+    position: 'relative',
+    color: '#eee',
   },
   codeLabel: {
-    fontSize: 12,
+    fontSize: 11,
     textTransform: 'uppercase' as const,
     letterSpacing: 2,
     opacity: 0.5,
   },
   code: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: 700,
     letterSpacing: 8,
+  },
+  codeCopiedTag: {
+    position: 'absolute' as const,
+    top: 6,
+    right: 10,
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 1,
+    color: '#4ade80',
+    transition: 'opacity 0.2s',
+  },
+  statusBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    marginTop: 8,
   },
   statusRow: {
     display: 'flex',
@@ -188,11 +359,6 @@ const styles: Record<string, React.CSSProperties> = {
     width: 10,
     height: 10,
     borderRadius: '50%',
-  },
-  hint: {
-    fontSize: 13,
-    opacity: 0.4,
-    marginTop: 16,
   },
 
   // --- Rules briefing ---
@@ -276,10 +442,27 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fbbf24',
     marginTop: 8,
   },
-  readyText: {
-    fontSize: 16,
-    opacity: 0.4,
-    fontStyle: 'italic',
+  playSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
     marginTop: 8,
+  },
+  playBtn: {
+    padding: '14px 56px',
+    fontSize: 18,
+    fontWeight: 700,
+    border: 'none',
+    borderRadius: 12,
+    letterSpacing: 1,
+    transition: 'background 0.2s, color 0.2s',
+  },
+  playStatus: {
+    fontSize: 13,
+    opacity: 0.55,
+    margin: 0,
+    fontStyle: 'italic',
+    textAlign: 'center' as const,
   },
 };

@@ -87,11 +87,23 @@ export type SimulationEvent = {
   playerId: string;
 };
 
+const SAVE_ATTRIBUTION_WINDOW_MS = 3000;
+const CHAIN_ATTRIBUTION_WINDOW_MS = 5000;
+
 export class Simulation {
   zones: ZoneState[];
   players: PlayerState[];
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private criticalTickCounters: Map<string, number> = new Map();
+  // Last time each player actually reduced a zone. Gates reductions to at most
+  // one per ~tick so an immediate press (see resolveImmediate) feels responsive
+  // without letting tap-spam farm faster than the tick cadence.
+  private lastReduceAt: Map<string, number> = new Map();
+  private static readonly REDUCE_COOLDOWN_MS = SIMULATION_TICK_MS * 0.9;
+  // Zones that crossed into critical (>= SPREAD_THRESHOLD) and have not yet
+  // returned to safety (< CRITICAL_SAVE_THRESHOLD). Used to award criticalSaves
+  // across multiple ticks, since a single tick cannot drop 75→<50.
+  private recentlyCritical: Set<string> = new Set();
   private tickCount = 0;
   onEvent?: (evt: SimulationEvent) => void;
 
@@ -115,6 +127,7 @@ export class Simulation {
     this.tickCount++;
     this.escalateZones();
     this.applyPlayerActions();
+    this.applyNaturalDecay();
     this.applySpread();
   }
 
@@ -135,6 +148,7 @@ export class Simulation {
       zone.instability = clamp(zone.instability + amount, INSTABILITY_MIN, INSTABILITY_MAX);
 
       if (prev < SPREAD_THRESHOLD && zone.instability >= SPREAD_THRESHOLD) {
+        this.recentlyCritical.add(zone.id);
         this.onEvent?.({ type: 'zone_critical', zoneId: zone.id, playerId: '' });
       }
     }
@@ -157,43 +171,94 @@ export class Simulation {
 
     for (const player of this.players) {
       if (!player.isActing) continue;
-
       player.score.actionTimeMs += SIMULATION_TICK_MS;
+      this.tryReduce(player, now);
+    }
+  }
 
-      let bestZone: ZoneState | null = null;
-      let bestDist = Infinity;
+  // Apply a single player's action to its nearest in-range zone, including all
+  // save/chain scoring. Rate-limited per player so it can be invoked both from
+  // the tick loop and immediately on a fresh press (resolveImmediate) without
+  // exceeding the intended one-reduction-per-tick cadence.
+  resolveImmediate(player: PlayerState) {
+    if (!player.isActing) return;
+    this.tryReduce(player, Date.now());
+  }
 
-      for (const zone of this.zones) {
-        const dist = distance(player.x, player.y, zone.x, zone.y);
-        if (dist <= ACTION_RANGE + ZONE_RADIUS && dist < bestDist) {
-          bestDist = dist;
-          bestZone = zone;
-        }
+  private tryReduce(player: PlayerState, now: number) {
+    const last = this.lastReduceAt.get(player.id) ?? 0;
+    if (now - last < Simulation.REDUCE_COOLDOWN_MS) return;
+
+    let bestZone: ZoneState | null = null;
+    let bestDist = Infinity;
+
+    for (const zone of this.zones) {
+      const dist = distance(player.x, player.y, zone.x, zone.y);
+      if (dist <= ACTION_RANGE + ZONE_RADIUS && dist < bestDist) {
+        bestDist = dist;
+        bestZone = zone;
       }
+    }
 
-      if (!bestZone) continue;
+    if (!bestZone) return;
 
-      const prevInstability = bestZone.instability;
-      const reduction = Math.min(bestZone.instability, ACTION_REDUCTION_PER_TICK);
-      bestZone.instability = clamp(bestZone.instability - reduction, INSTABILITY_MIN, INSTABILITY_MAX);
+    const prevInstability = bestZone.instability;
+    const reduction = Math.min(bestZone.instability, ACTION_REDUCTION_PER_TICK);
+    bestZone.instability = clamp(bestZone.instability - reduction, INSTABILITY_MIN, INSTABILITY_MAX);
 
-      if (reduction > 0) {
-        player.score.totalReduction += reduction;
+    if (reduction <= 0) return;
 
-        bestZone.lastContributors.push({
-          playerId: player.id,
-          contribution: reduction,
-          timestamp: now,
-        });
-        if (bestZone.lastContributors.length > 20) {
-          bestZone.lastContributors = bestZone.lastContributors.slice(-20);
-        }
+    this.lastReduceAt.set(player.id, now);
+    player.score.totalReduction += reduction;
 
-        if (prevInstability >= SPREAD_THRESHOLD && bestZone.instability < CRITICAL_SAVE_THRESHOLD) {
-          player.score.criticalSaves += 1;
-          this.onEvent?.({ type: 'zone_saved', zoneId: bestZone.id, playerId: player.id });
-        }
+    bestZone.lastContributors.push({
+      playerId: player.id,
+      contribution: reduction,
+      timestamp: now,
+    });
+    if (bestZone.lastContributors.length > 20) {
+      bestZone.lastContributors = bestZone.lastContributors.slice(-20);
+    }
+
+    // criticalSave: zone was at some point critical (>=SPREAD_THRESHOLD) and
+    // is now safe (<CRITICAL_SAVE_THRESHOLD). Tracked across ticks because
+    // a single tick can only reduce by ACTION_REDUCTION_PER_TICK.
+    if (
+      this.recentlyCritical.has(bestZone.id) &&
+      bestZone.instability < CRITICAL_SAVE_THRESHOLD
+    ) {
+      const recent = bestZone.lastContributors.filter(
+        (c) => now - c.timestamp < SAVE_ATTRIBUTION_WINDOW_MS,
+      );
+      const awarded = new Set<string>();
+      for (const c of recent) {
+        if (awarded.has(c.playerId)) continue;
+        awarded.add(c.playerId);
+        const p = this.players.find((pp) => pp.id === c.playerId);
+        if (p) p.score.criticalSaves += 1;
       }
+      this.recentlyCritical.delete(bestZone.id);
+      this.onEvent?.({ type: 'zone_saved', zoneId: bestZone.id, playerId: player.id });
+    }
+
+    // chainPrevention: zone was building toward spread (counter > 0) and
+    // this action knocked it back below SPREAD_THRESHOLD before it spread.
+    if (
+      prevInstability >= SPREAD_THRESHOLD &&
+      bestZone.instability < SPREAD_THRESHOLD &&
+      (this.criticalTickCounters.get(bestZone.id) ?? 0) > 0
+    ) {
+      const recent = bestZone.lastContributors.filter(
+        (c) => now - c.timestamp < CHAIN_ATTRIBUTION_WINDOW_MS,
+      );
+      const awarded = new Set<string>();
+      for (const c of recent) {
+        if (awarded.has(c.playerId)) continue;
+        awarded.add(c.playerId);
+        const p = this.players.find((pp) => pp.id === c.playerId);
+        if (p) p.score.chainPreventions += 1;
+      }
+      this.criticalTickCounters.delete(bestZone.id);
     }
   }
 
@@ -212,23 +277,27 @@ export class Simulation {
           for (const nId of targets) {
             const neighbor = this.zones.find((z) => z.id === nId);
             if (neighbor) {
+              const prev = neighbor.instability;
               const spreadAmt = rand(SPREAD_AMOUNT_MIN, SPREAD_AMOUNT_MAX);
               neighbor.instability = clamp(neighbor.instability + spreadAmt, INSTABILITY_MIN, INSTABILITY_MAX);
+              if (prev < SPREAD_THRESHOLD && neighbor.instability >= SPREAD_THRESHOLD) {
+                this.recentlyCritical.add(neighbor.id);
+                this.onEvent?.({ type: 'zone_critical', zoneId: neighbor.id, playerId: '' });
+              }
             }
           }
 
           this.criticalTickCounters.set(zone.id, 0);
-
-          const recentContributors = zone.lastContributors
-            .filter((c) => Date.now() - c.timestamp < 5000);
-          for (const c of recentContributors) {
-            const player = this.players.find((p) => p.id === c.playerId);
-            if (player) player.score.chainPreventions += 1;
-          }
-
           this.onEvent?.({ type: 'chain_started', zoneId: zone.id, playerId: '' });
         }
+      } else if (zone.instability < CRITICAL_SAVE_THRESHOLD) {
+        // Zone fully cooled; clear all critical tracking. Saves & chain
+        // preventions are awarded in applyPlayerActions at the moment of cooling.
+        this.criticalTickCounters.delete(zone.id);
+        this.recentlyCritical.delete(zone.id);
       } else {
+        // Zone is between thresholds — clear spread counter (no longer building
+        // toward spread) but keep recentlyCritical until it fully cools.
         this.criticalTickCounters.delete(zone.id);
       }
     }

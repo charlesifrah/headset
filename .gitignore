@@ -4,3 +4,8 @@ client/dist/
 .DS_Store
 *.env
 .env*
+
+# Build artifacts
+*.tsbuildinfo
+client/vite.config.js
+client/vite.config.d.ts

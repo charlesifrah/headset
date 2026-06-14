@@ -55,6 +55,7 @@ export function GamePreview({ mode, zones }: Props) {
 
     let raf: number;
     const start = performance.now();
+    const ctx = canvas.getContext('2d')!;
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -77,7 +78,6 @@ export function GamePreview({ mode, zones }: Props) {
         canvas!.height = h * dpr;
       }
 
-      const ctx = canvas!.getContext('2d')!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const t = (performance.now() - start) / 1000;

@@ -9,5 +9,8 @@ const URL = import.meta.env.PROD
 
 export const socket: GameSocket = io(URL, {
   autoConnect: false,
-  transports: ['polling', 'websocket'],
+  // Prefer WebSocket directly so the realtime game traffic skips the HTTP
+  // long-poll handshake + upgrade round-trip at match start. Polling stays as a
+  // fallback for networks that block raw WebSocket.
+  transports: ['websocket', 'polling'],
 });

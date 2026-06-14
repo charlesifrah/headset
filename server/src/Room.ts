@@ -1,5 +1,5 @@
 import type { Room, PlayerState, HiddenScore, PerceptionMode, RevealPayload, StateSnapshot } from '@shared-field/shared';
-import { ROUND_DURATION_MS, MAP_WIDTH, MAP_HEIGHT } from '@shared-field/shared';
+import { ROUND_DURATION_MS, MAP_WIDTH, MAP_HEIGHT, BROADCAST_TICK_MS } from '@shared-field/shared';
 import { Simulation, createZones } from './Simulation.js';
 import type { SimulationEvent } from './Simulation.js';
 
@@ -21,6 +21,8 @@ export class GameRoom {
   simulation: Simulation | null = null;
   broadcastInterval: ReturnType<typeof setInterval> | null = null;
   roundTimer: ReturnType<typeof setTimeout> | null = null;
+  countdownInterval: ReturnType<typeof setInterval> | null = null;
+  readyPlayers: Set<string> = new Set();
 
   onBroadcast?: (snapshot: StateSnapshot) => void;
   onEvent?: (evt: SimulationEvent) => void;
@@ -75,17 +77,34 @@ export class GameRoom {
     this.simulation.start();
 
     this.broadcastInterval = setInterval(() => {
-      this.onBroadcast?.({
-        players: this.data.players,
-        zones: this.data.zones,
-        roundEndsAt: this.data.roundEndsAt,
-        serverTime: Date.now(),
-      });
-    }, 150);
+      this.onBroadcast?.(this.buildSnapshot());
+    }, BROADCAST_TICK_MS);
 
     this.roundTimer = setTimeout(() => {
       this.endRound();
     }, ROUND_DURATION_MS);
+  }
+
+  // Lean snapshot for the wire: strips role/socketId (reveal-twist leak) and
+  // zone.lastContributors (server-only scoring bookkeeping) from the full state.
+  private buildSnapshot(): StateSnapshot {
+    return {
+      players: this.data.players.map((p) => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        isActing: p.isActing,
+        score: p.score,
+      })),
+      zones: this.data.zones.map((z) => ({
+        id: z.id,
+        x: z.x,
+        y: z.y,
+        instability: z.instability,
+      })),
+      roundEndsAt: this.data.roundEndsAt,
+      serverTime: Date.now(),
+    };
   }
 
   endRound() {
@@ -109,36 +128,16 @@ export class GameRoom {
     const garden = this.data.players.find((p) => p.role === 'garden');
     const fire = this.data.players.find((p) => p.role === 'fire');
 
-    const gardenScore = garden?.score ?? createScore();
-    const fireScore = fire?.score ?? createScore();
-
     return {
       gardenPlayer: {
         id: garden?.id ?? '',
-        score: gardenScore,
+        score: garden?.score ?? createScore(),
       },
       firePlayer: {
         id: fire?.id ?? '',
-        score: fireScore,
+        score: fire?.score ?? createScore(),
       },
       zones: this.data.zones,
-      mappings: [
-        {
-          gardenLabel: 'Plants Grown',
-          fireLabel: 'Fires Extinguished',
-          value: Math.round(gardenScore.totalReduction + fireScore.totalReduction),
-        },
-        {
-          gardenLabel: 'Garden Saves',
-          fireLabel: 'Sector Saves',
-          value: Math.round(gardenScore.criticalSaves + fireScore.criticalSaves),
-        },
-        {
-          gardenLabel: 'Bloom Chains',
-          fireLabel: 'Flare Stops',
-          value: Math.round(gardenScore.chainPreventions + fireScore.chainPreventions),
-        },
-      ],
     };
   }
 
@@ -146,5 +145,6 @@ export class GameRoom {
     this.simulation?.stop();
     if (this.broadcastInterval) clearInterval(this.broadcastInterval);
     if (this.roundTimer) clearTimeout(this.roundTimer);
+    if (this.countdownInterval) clearInterval(this.countdownInterval);
   }
 }

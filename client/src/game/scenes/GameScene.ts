@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { GameContext } from '../../App';
-import type { StateSnapshot, ZoneState } from '@shared-field/shared';
+import type { StateSnapshot, SnapshotZone } from '@shared-field/shared';
 import { MAP_WIDTH, MAP_HEIGHT, ACTION_RANGE, ZONE_RADIUS } from '@shared-field/shared';
 import { socket } from '../../socket';
 import { ZoneObject } from '../objects/Zone';
@@ -30,7 +30,8 @@ export class GameScene extends Phaser.Scene {
   private sprayGfx: Phaser.GameObjects.Graphics | null = null;
   private arrowGfx: Phaser.GameObjects.Graphics | null = null;
   private latestSnapshot: StateSnapshot | null = null;
-  private latestZoneStates: ZoneState[] = [];
+  private latestZoneStates: SnapshotZone[] = [];
+  private lastSnapServerTime = -1;
   private joystick: VirtualJoystick | null = null;
   private actionBtn: ActionButton | null = null;
   private mobile = false;
@@ -98,6 +99,7 @@ export class GameScene extends Phaser.Scene {
       if (document.visibilityState === 'visible') {
         this.syncState();
         for (const zone of this.zones.values()) zone.snapToTarget();
+        this.partnerPlayer?.resetInterpolation();
         this.lastVisualTime = 0;
       }
     };
@@ -106,6 +108,7 @@ export class GameScene extends Phaser.Scene {
     this.game.events.on(Phaser.Core.Events.RESUME, () => {
       this.syncState();
       for (const zone of this.zones.values()) zone.snapToTarget();
+      this.partnerPlayer?.resetInterpolation();
       this.lastVisualTime = 0;
     });
 
@@ -255,11 +258,11 @@ export class GameScene extends Phaser.Scene {
 
   // ---- Helpers ----
 
-  private findNearestZone(): ZoneState | null {
+  private findNearestZone(): SnapshotZone | null {
     if (!this.localPlayer || this.latestZoneStates.length === 0) return null;
     const px = this.localPlayer.x;
     const py = this.localPlayer.y;
-    let best: ZoneState | null = null;
+    let best: SnapshotZone | null = null;
     let bestDist = Infinity;
     for (const z of this.latestZoneStates) {
       const dx = z.x - px;
@@ -273,11 +276,11 @@ export class GameScene extends Phaser.Scene {
     return best;
   }
 
-  private findMostUrgentZone(): ZoneState | null {
+  private findMostUrgentZone(): SnapshotZone | null {
     if (!this.localPlayer || this.latestZoneStates.length === 0) return null;
     const px = this.localPlayer.x;
     const py = this.localPlayer.y;
-    let best: ZoneState | null = null;
+    let best: SnapshotZone | null = null;
     let bestScore = -Infinity;
     for (const z of this.latestZoneStates) {
       if (z.instability <= 30) continue;
@@ -384,6 +387,12 @@ export class GameScene extends Phaser.Scene {
     const snap = this.latestSnapshot;
     if (!snap) return;
 
+    // syncState runs every frame, but a snapshot only changes ~every 150ms.
+    // Track whether this is a genuinely new snapshot so the partner buffer gets
+    // one sample per snapshot (not one per frame).
+    const isNewSnapshot = snap.serverTime !== this.lastSnapServerTime;
+    this.lastSnapServerTime = snap.serverTime;
+
     this.latestZoneStates = snap.zones;
 
     for (const zs of snap.zones) {
@@ -410,7 +419,9 @@ export class GameScene extends Phaser.Scene {
       if (!this.partnerPlayer) {
         this.partnerPlayer = new PlayerObject(this, partnerState.x, partnerState.y, false, this.gameCtx.role);
       }
-      this.partnerPlayer.syncPosition(partnerState.x, partnerState.y);
+      if (isNewSnapshot) {
+        this.partnerPlayer.pushSnapshot(partnerState.x, partnerState.y);
+      }
       this.partnerPlayer.setActing(partnerState.isActing);
     }
   }

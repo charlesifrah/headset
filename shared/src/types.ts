@@ -44,10 +44,32 @@ export type Room = {
   zones: ZoneState[];
 };
 
+// Lean per-player view sent in live snapshots. Deliberately excludes `role` and
+// `socketId`: broadcasting `role` would let a player inspect the reveal twist
+// (which worldview their partner has) via devtools mid-game. `score` is kept
+// because the in-game HUD shows it, translated into the viewer's own worldview.
+export type SnapshotPlayer = {
+  id: string;
+  x: number;
+  y: number;
+  isActing: boolean;
+  score: HiddenScore;
+};
+
+// Lean zone view sent in live snapshots. Excludes `lastContributors`, which is
+// server-only scoring bookkeeping (up to 20 entries per zone, never needed by
+// the client) — pure payload bloat at ~6-7 snapshots/sec.
+export type SnapshotZone = {
+  id: string;
+  x: number;
+  y: number;
+  instability: number;
+};
+
 // State snapshot sent to clients each broadcast tick
 export type StateSnapshot = {
-  players: PlayerState[];
-  zones: ZoneState[];
+  players: SnapshotPlayer[];
+  zones: SnapshotZone[];
   roundEndsAt: number | null;
   serverTime: number;
 };
@@ -68,7 +90,6 @@ export type RevealPayload = {
     score: HiddenScore;
   };
   zones: ZoneState[];
-  mappings: { gardenLabel: string; fireLabel: string; value: number }[];
 };
 
 // --- Socket event types ---
@@ -84,9 +105,10 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
-  room_created: (data: { roomId: string; playerId: string; role: PerceptionMode }) => void;
-  room_joined: (data: { roomId: string; playerId: string; role: PerceptionMode }) => void;
+  room_created: (data: { roomId: string; playerId: string; role: PerceptionMode; partnerPresent: boolean }) => void;
+  room_joined: (data: { roomId: string; playerId: string; role: PerceptionMode; partnerPresent: boolean }) => void;
   player_joined: (data: { playerId: string }) => void;
+  partner_ready: (data: { playerId: string }) => void;
   match_countdown: (data: { seconds: number }) => void;
   match_start: (data: { roundEndsAt: number; serverTime: number }) => void;
   state_snapshot: (data: StateSnapshot) => void;

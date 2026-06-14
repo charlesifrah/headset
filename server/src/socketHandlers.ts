@@ -25,12 +25,17 @@ export function registerSocketHandlers(io: GameServer) {
       playerRoomMap.set(socket.id, room.data.id);
       socket.join(room.data.id);
 
+      // Creator is implicitly ready — only the invitee's Play click is required
+      // to start the countdown.
+      room.readyPlayers.add(player.id);
+
       console.log(`[room] created ${room.data.id} by ${player.id}`);
 
       socket.emit('room_created', {
         roomId: room.data.id,
         playerId: player.id,
         role: player.role,
+        partnerPresent: room.data.players.length > 1,
       });
     });
 
@@ -60,18 +65,34 @@ export function registerSocketHandlers(io: GameServer) {
         roomId: room.data.id,
         playerId: player.id,
         role: player.role,
+        partnerPresent: room.data.players.length > 1,
       });
 
-      socket.to(room.data.id).emit('player_joined', { playerId: player.id });
+      // Broadcast to everyone in the room (including the joiner) so both
+      // sides flip to the rules screen.
+      io.to(room.data.id).emit('player_joined', { playerId: player.id });
     });
 
     socket.on('player_ready', () => {
       const roomId = playerRoomMap.get(socket.id);
       if (!roomId) return;
       const room = rooms.get(roomId);
-      if (!room) return;
+      if (!room || room.data.status !== 'waiting') return;
 
-      if (room.isFull() && room.data.status === 'waiting') {
+      const player = room.getPlayerBySocket(socket.id);
+      if (!player) return;
+      if (room.readyPlayers.has(player.id)) return;
+
+      room.readyPlayers.add(player.id);
+
+      // Tell everyone else in the room that this player is ready
+      socket.to(roomId).emit('partner_ready', { playerId: player.id });
+
+      // Start countdown only when every connected player has pressed Play
+      if (
+        room.isFull() &&
+        room.data.players.every((p) => room.readyPlayers.has(p.id))
+      ) {
         startCountdown(io, room);
       }
     });
@@ -98,9 +119,18 @@ export function registerSocketHandlers(io: GameServer) {
       const player = room.getPlayerBySocket(socket.id);
       if (!player) return;
 
+      const wasActing = player.isActing;
       player.isActing = true;
       player.aimX = data.aimX;
       player.aimY = data.aimY;
+
+      // On a *fresh* press (not the ~50ms aim-update re-emits while held), apply
+      // one reduction immediately so the zone starts responding within network
+      // RTT instead of waiting up to a full 250ms sim tick. The per-player
+      // cooldown inside the sim keeps the overall reduction rate unchanged.
+      if (!wasActing) {
+        room.simulation?.resolveImmediate(player);
+      }
     });
 
     socket.on('input_action_stop', () => {
@@ -133,7 +163,16 @@ export function registerSocketHandlers(io: GameServer) {
       if (roomId) {
         const room = rooms.get(roomId);
         if (room) {
+          const leaving = room.data.players.find((p) => p.socketId === socket.id);
+          if (leaving) room.readyPlayers.delete(leaving.id);
           room.data.players = room.data.players.filter((p) => p.socketId !== socket.id);
+
+          // If a player bails mid-countdown, stop it so it can't fire startMatch
+          // into a room that no longer has two players.
+          if (room.countdownInterval && room.data.status === 'waiting') {
+            clearInterval(room.countdownInterval);
+            room.countdownInterval = null;
+          }
 
           if (room.data.players.length === 0) {
             // Last player left -- clean up after a grace period
@@ -163,6 +202,7 @@ function startCountdown(io: GameServer, room: GameRoom) {
 
     if (seconds < 0) {
       clearInterval(interval);
+      room.countdownInterval = null;
 
       room.onBroadcast = (snapshot) => {
         io.to(room.data.id).emit('state_snapshot', snapshot);
@@ -192,4 +232,6 @@ function startCountdown(io: GameServer, room: GameRoom) {
       });
     }
   }, 1000);
+
+  room.countdownInterval = interval;
 }

@@ -1,11 +1,11 @@
 import { useRef, useEffect } from 'react';
-import type { PerceptionMode, ZoneState } from '@shared-field/shared';
+import type { PerceptionMode, SnapshotZone } from '@shared-field/shared';
 import { MAP_WIDTH, MAP_HEIGHT, ZONE_RADIUS } from '@shared-field/shared';
 import { drawGardenZoneDecoration, drawFireZoneDecoration } from '../game/zoneDecorations';
 
 type Props = {
   mode: PerceptionMode;
-  zones: ZoneState[];
+  zones: SnapshotZone[];
 };
 
 /**
@@ -24,6 +24,7 @@ export function ZoneCanvas({ mode, zones }: Props) {
 
     let raf: number;
     const start = performance.now();
+    const ctx = canvas.getContext('2d')!;
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -46,7 +47,6 @@ export function ZoneCanvas({ mode, zones }: Props) {
 
       if (w === 0 || h === 0) { raf = requestAnimationFrame(draw); return; }
 
-      const ctx = canvas!.getContext('2d')!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // Fully transparent each frame — Phaser draws background + circles below

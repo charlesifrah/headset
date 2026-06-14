@@ -13,6 +13,9 @@ export type GameContext = {
   roomId: string;
   playerId: string;
   role: PerceptionMode;
+  // Whether the partner was already in the room when we joined. WaitingRoom
+  // seeds its local state from this and updates on later player_joined events.
+  initialPartnerPresent: boolean;
 };
 
 export default function App() {
