@@ -127,7 +127,11 @@ export class Simulation {
     this.tickCount++;
     this.escalateZones();
     this.applyPlayerActions();
-    this.applyNaturalDecay();
+    // Natural decay intentionally NOT applied: it drains all ~9 zones every tick
+    // (~3/tick total), which cancels out escalation (only 1-2 zones/tick) and
+    // makes zones barely flare up. The challenge comes from escalation + spread
+    // forcing 2 players to triage 9 zones. See applyNaturalDecay() (kept for
+    // reference / future use behind a gentler rate).
     this.applySpread();
   }
 
