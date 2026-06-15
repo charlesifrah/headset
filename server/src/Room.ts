@@ -13,7 +13,7 @@ function generateRoomCode(): string {
 }
 
 function createScore(): HiddenScore {
-  return { totalReduction: 0, actionTimeMs: 0 };
+  return { totalReduction: 0 };
 }
 
 export class GameRoom {

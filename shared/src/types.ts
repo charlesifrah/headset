@@ -4,7 +4,6 @@ export type RoomStatus = 'waiting' | 'playing' | 'ended';
 
 export type HiddenScore = {
   totalReduction: number;
-  actionTimeMs: number;
 };
 
 export type PlayerState = {

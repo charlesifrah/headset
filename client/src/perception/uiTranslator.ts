@@ -8,23 +8,8 @@ type TranslatedScore = {
 };
 
 export function translateScore(score: HiddenScore, mode: PerceptionMode): TranslatedScore {
-  const efficiency =
-    score.actionTimeMs > 0
-      ? Math.round((score.totalReduction / (score.actionTimeMs / 1000)) * 10) / 10
-      : 0;
-
-  if (mode === 'garden') {
-    const all: ScoreLine[] = [
-      { label: 'Plants Grown', value: Math.round(score.totalReduction) },
-      { label: 'Water Efficiency', value: efficiency },
-    ];
-    return { primary: all[0], all };
-  }
-
-  const all: ScoreLine[] = [
-    { label: 'Fires Extinguished', value: Math.round(score.totalReduction) },
-    { label: 'Suppression Efficiency', value: efficiency },
-  ];
+  const label = mode === 'garden' ? 'Plants Grown' : 'Fires Extinguished';
+  const all: ScoreLine[] = [{ label, value: Math.round(score.totalReduction) }];
   return { primary: all[0], all };
 }
 

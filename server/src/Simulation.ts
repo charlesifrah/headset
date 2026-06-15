@@ -165,7 +165,6 @@ export class Simulation {
 
     for (const player of this.players) {
       if (!player.isActing) continue;
-      player.score.actionTimeMs += SIMULATION_TICK_MS;
       this.tryReduce(player, now);
     }
   }

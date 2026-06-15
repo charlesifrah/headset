@@ -174,31 +174,30 @@ export function RevealScreen({ gameCtx, data, onPlayAgain }: Props) {
           </div>
         )}
 
-        {/* --- Mapping rows --- */}
-        {phase >= 4 && (
-          <div style={styles.mappingBox}>
-            {mappingRows.map((row, i) => (
-              <div
-                key={i}
-                style={{
-                  ...styles.mappingRow,
-                  opacity: i < visibleMappings ? 1 : 0,
-                  transform: i < visibleMappings
-                    ? 'translateY(0) scale(1)'
-                    : 'translateY(12px) scale(0.95)',
-                }}
-              >
-                <span style={{ ...styles.mapLabel, color: isGarden ? '#4ade80' : '#f97316', textAlign: 'right' as const }}>
-                  {row.yourLabel}
-                </span>
-                <span style={styles.mapValue}>{row.yourValue}</span>
-                <span style={styles.mapEquals}>≡</span>
-                <span style={styles.mapValue}>{row.partnerValue}</span>
-                <span style={{ ...styles.mapLabel, color: isGarden ? '#f97316' : '#4ade80', textAlign: 'left' as const }}>
-                  {row.partnerLabel}
-                </span>
+        {/* --- Hero single-metric comparison --- */}
+        {phase >= 4 && mappingRows[0] && (
+          <div
+            style={{
+              ...styles.heroCompare,
+              opacity: visibleMappings >= 1 ? 1 : 0,
+              transform: visibleMappings >= 1
+                ? 'translateY(0) scale(1)'
+                : 'translateY(16px) scale(0.96)',
+            }}
+          >
+            <div style={styles.heroSide}>
+              <div style={{ ...styles.heroLabel, color: isGarden ? '#4ade80' : '#f97316' }}>
+                {mappingRows[0].yourLabel}
               </div>
-            ))}
+              <div style={styles.heroNum}>{mappingRows[0].yourValue}</div>
+            </div>
+            <div style={styles.heroEquals}>≡</div>
+            <div style={styles.heroSide}>
+              <div style={{ ...styles.heroLabel, color: isGarden ? '#f97316' : '#4ade80' }}>
+                {mappingRows[0].partnerLabel}
+              </div>
+              <div style={styles.heroNum}>{mappingRows[0].partnerValue}</div>
+            </div>
           </div>
         )}
 
@@ -363,41 +362,41 @@ const styles: Record<string, React.CSSProperties> = {
     opacity: 0.5,
   },
 
-  // --- Mappings ---
-  mappingBox: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 0,
-    background: 'rgba(15,23,42,0.9)',
-    backdropFilter: 'blur(8px)',
-    borderRadius: 14,
-    padding: '12px 0',
-    minWidth: 480,
-  },
-  mappingRow: {
+  // --- Hero single-metric comparison ---
+  heroCompare: {
     display: 'flex',
     alignItems: 'center',
-    padding: '14px 20px',
-    gap: 10,
-    transition: 'all 0.5s cubic-bezier(0.4,0,0.2,1)',
-    borderBottom: '1px solid rgba(30,41,59,0.4)',
+    justifyContent: 'center',
+    gap: 32,
+    flexWrap: 'wrap',
+    padding: '20px 28px',
+    background: 'rgba(15,23,42,0.9)',
+    backdropFilter: 'blur(8px)',
+    borderRadius: 18,
+    transition: 'all 0.6s cubic-bezier(0.4,0,0.2,1)',
   },
-  mapLabel: {
-    flex: 1,
+  heroSide: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 130,
+  },
+  heroLabel: {
     fontSize: 14,
-    fontWeight: 600,
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 1,
   },
-  mapValue: {
-    minWidth: 36,
-    textAlign: 'center' as const,
-    fontSize: 18,
-    fontWeight: 800,
-    flexShrink: 0,
+  heroNum: {
+    fontSize: 56,
+    fontWeight: 900,
+    lineHeight: 1,
     color: '#fbbf24',
   },
-  mapEquals: {
-    fontSize: 16,
-    fontWeight: 700,
+  heroEquals: {
+    fontSize: 34,
+    fontWeight: 800,
     color: 'rgba(255,255,255,0.4)',
     flexShrink: 0,
   },
