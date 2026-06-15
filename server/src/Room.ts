@@ -13,7 +13,7 @@ function generateRoomCode(): string {
 }
 
 function createScore(): HiddenScore {
-  return { totalReduction: 0, criticalSaves: 0, actionTimeMs: 0, chainPreventions: 0 };
+  return { totalReduction: 0, actionTimeMs: 0 };
 }
 
 export class GameRoom {
@@ -85,8 +85,8 @@ export class GameRoom {
     }, ROUND_DURATION_MS);
   }
 
-  // Lean snapshot for the wire: strips role/socketId (reveal-twist leak) and
-  // zone.lastContributors (server-only scoring bookkeeping) from the full state.
+  // Lean snapshot for the wire: strips role/socketId so the reveal twist can't
+  // be inspected via devtools mid-game.
   private buildSnapshot(): StateSnapshot {
     return {
       players: this.data.players.map((p) => ({

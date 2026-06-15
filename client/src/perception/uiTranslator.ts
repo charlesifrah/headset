@@ -16,18 +16,14 @@ export function translateScore(score: HiddenScore, mode: PerceptionMode): Transl
   if (mode === 'garden') {
     const all: ScoreLine[] = [
       { label: 'Plants Grown', value: Math.round(score.totalReduction) },
-      { label: 'Garden Saves', value: Math.round(score.criticalSaves) },
       { label: 'Water Efficiency', value: efficiency },
-      { label: 'Bloom Chains', value: Math.round(score.chainPreventions) },
     ];
     return { primary: all[0], all };
   }
 
   const all: ScoreLine[] = [
     { label: 'Fires Extinguished', value: Math.round(score.totalReduction) },
-    { label: 'Sector Saves', value: Math.round(score.criticalSaves) },
     { label: 'Suppression Efficiency', value: efficiency },
-    { label: 'Flare Stops', value: Math.round(score.chainPreventions) },
   ];
   return { primary: all[0], all };
 }

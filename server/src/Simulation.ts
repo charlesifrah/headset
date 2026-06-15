@@ -19,7 +19,6 @@ import {
   SPREAD_MAX_NEIGHBORS,
   ACTION_RANGE,
   ACTION_REDUCTION_PER_TICK,
-  CRITICAL_SAVE_THRESHOLD,
   ZONE_RADIUS,
 } from '@shared-field/shared';
 
@@ -51,7 +50,6 @@ export function createZones(): ZoneState[] {
         x: marginX * (col + 1),
         y: marginY * (row + 1),
         instability: rand(5, 30),
-        lastContributors: [],
       });
     }
   }
@@ -87,9 +85,6 @@ export type SimulationEvent = {
   playerId: string;
 };
 
-const SAVE_ATTRIBUTION_WINDOW_MS = 3000;
-const CHAIN_ATTRIBUTION_WINDOW_MS = 5000;
-
 export class Simulation {
   zones: ZoneState[];
   players: PlayerState[];
@@ -100,10 +95,6 @@ export class Simulation {
   // without letting tap-spam farm faster than the tick cadence.
   private lastReduceAt: Map<string, number> = new Map();
   private static readonly REDUCE_COOLDOWN_MS = SIMULATION_TICK_MS * 0.9;
-  // Zones that crossed into critical (>= SPREAD_THRESHOLD) and have not yet
-  // returned to safety (< CRITICAL_SAVE_THRESHOLD). Used to award criticalSaves
-  // across multiple ticks, since a single tick cannot drop 75→<50.
-  private recentlyCritical: Set<string> = new Set();
   private tickCount = 0;
   onEvent?: (evt: SimulationEvent) => void;
 
@@ -152,7 +143,6 @@ export class Simulation {
       zone.instability = clamp(zone.instability + amount, INSTABILITY_MIN, INSTABILITY_MAX);
 
       if (prev < SPREAD_THRESHOLD && zone.instability >= SPREAD_THRESHOLD) {
-        this.recentlyCritical.add(zone.id);
         this.onEvent?.({ type: 'zone_critical', zoneId: zone.id, playerId: '' });
       }
     }
@@ -180,10 +170,9 @@ export class Simulation {
     }
   }
 
-  // Apply a single player's action to its nearest in-range zone, including all
-  // save/chain scoring. Rate-limited per player so it can be invoked both from
-  // the tick loop and immediately on a fresh press (resolveImmediate) without
-  // exceeding the intended one-reduction-per-tick cadence.
+  // Apply a single player's action to its nearest in-range zone. Rate-limited
+  // per player so it can be invoked both from the tick loop and immediately on a
+  // fresh press (resolveImmediate) without exceeding the one-per-tick cadence.
   resolveImmediate(player: PlayerState) {
     if (!player.isActing) return;
     this.tryReduce(player, Date.now());
@@ -206,7 +195,6 @@ export class Simulation {
 
     if (!bestZone) return;
 
-    const prevInstability = bestZone.instability;
     const reduction = Math.min(bestZone.instability, ACTION_REDUCTION_PER_TICK);
     bestZone.instability = clamp(bestZone.instability - reduction, INSTABILITY_MIN, INSTABILITY_MAX);
 
@@ -215,54 +203,10 @@ export class Simulation {
     this.lastReduceAt.set(player.id, now);
     player.score.totalReduction += reduction;
 
-    bestZone.lastContributors.push({
-      playerId: player.id,
-      contribution: reduction,
-      timestamp: now,
-    });
-    if (bestZone.lastContributors.length > 20) {
-      bestZone.lastContributors = bestZone.lastContributors.slice(-20);
-    }
-
-    // criticalSave: zone was at some point critical (>=SPREAD_THRESHOLD) and
-    // is now safe (<CRITICAL_SAVE_THRESHOLD). Tracked across ticks because
-    // a single tick can only reduce by ACTION_REDUCTION_PER_TICK.
-    if (
-      this.recentlyCritical.has(bestZone.id) &&
-      bestZone.instability < CRITICAL_SAVE_THRESHOLD
-    ) {
-      const recent = bestZone.lastContributors.filter(
-        (c) => now - c.timestamp < SAVE_ATTRIBUTION_WINDOW_MS,
-      );
-      const awarded = new Set<string>();
-      for (const c of recent) {
-        if (awarded.has(c.playerId)) continue;
-        awarded.add(c.playerId);
-        const p = this.players.find((pp) => pp.id === c.playerId);
-        if (p) p.score.criticalSaves += 1;
-      }
-      this.recentlyCritical.delete(bestZone.id);
+    // Fire a "saved" feedback toast when a player cools a zone back out of the
+    // critical band (no longer scored, but still useful in-game feedback).
+    if (bestZone.instability < SPREAD_THRESHOLD && bestZone.instability + reduction >= SPREAD_THRESHOLD) {
       this.onEvent?.({ type: 'zone_saved', zoneId: bestZone.id, playerId: player.id });
-    }
-
-    // chainPrevention: zone was building toward spread (counter > 0) and
-    // this action knocked it back below SPREAD_THRESHOLD before it spread.
-    if (
-      prevInstability >= SPREAD_THRESHOLD &&
-      bestZone.instability < SPREAD_THRESHOLD &&
-      (this.criticalTickCounters.get(bestZone.id) ?? 0) > 0
-    ) {
-      const recent = bestZone.lastContributors.filter(
-        (c) => now - c.timestamp < CHAIN_ATTRIBUTION_WINDOW_MS,
-      );
-      const awarded = new Set<string>();
-      for (const c of recent) {
-        if (awarded.has(c.playerId)) continue;
-        awarded.add(c.playerId);
-        const p = this.players.find((pp) => pp.id === c.playerId);
-        if (p) p.score.chainPreventions += 1;
-      }
-      this.criticalTickCounters.delete(bestZone.id);
     }
   }
 
@@ -285,7 +229,6 @@ export class Simulation {
               const spreadAmt = rand(SPREAD_AMOUNT_MIN, SPREAD_AMOUNT_MAX);
               neighbor.instability = clamp(neighbor.instability + spreadAmt, INSTABILITY_MIN, INSTABILITY_MAX);
               if (prev < SPREAD_THRESHOLD && neighbor.instability >= SPREAD_THRESHOLD) {
-                this.recentlyCritical.add(neighbor.id);
                 this.onEvent?.({ type: 'zone_critical', zoneId: neighbor.id, playerId: '' });
               }
             }
@@ -294,14 +237,8 @@ export class Simulation {
           this.criticalTickCounters.set(zone.id, 0);
           this.onEvent?.({ type: 'chain_started', zoneId: zone.id, playerId: '' });
         }
-      } else if (zone.instability < CRITICAL_SAVE_THRESHOLD) {
-        // Zone fully cooled; clear all critical tracking. Saves & chain
-        // preventions are awarded in applyPlayerActions at the moment of cooling.
-        this.criticalTickCounters.delete(zone.id);
-        this.recentlyCritical.delete(zone.id);
       } else {
-        // Zone is between thresholds — clear spread counter (no longer building
-        // toward spread) but keep recentlyCritical until it fully cools.
+        // Zone is below the spread threshold — no longer building toward spread.
         this.criticalTickCounters.delete(zone.id);
       }
     }

@@ -4,9 +4,7 @@ export type RoomStatus = 'waiting' | 'playing' | 'ended';
 
 export type HiddenScore = {
   totalReduction: number;
-  criticalSaves: number;
   actionTimeMs: number;
-  chainPreventions: number;
 };
 
 export type PlayerState = {
@@ -21,18 +19,11 @@ export type PlayerState = {
   score: HiddenScore;
 };
 
-export type ZoneContributor = {
-  playerId: string;
-  contribution: number;
-  timestamp: number;
-};
-
 export type ZoneState = {
   id: string;
   x: number;
   y: number;
   instability: number;
-  lastContributors: ZoneContributor[];
 };
 
 export type Room = {
@@ -56,9 +47,7 @@ export type SnapshotPlayer = {
   score: HiddenScore;
 };
 
-// Lean zone view sent in live snapshots. Excludes `lastContributors`, which is
-// server-only scoring bookkeeping (up to 20 entries per zone, never needed by
-// the client) — pure payload bloat at ~6-7 snapshots/sec.
+// Lean zone view sent in live snapshots — just what the client renders.
 export type SnapshotZone = {
   id: string;
   x: number;
