@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
+import { MAP_WIDTH, MAP_HEIGHT } from '@shared-field/shared';
 import { GameScene } from './scenes/GameScene';
 import type { GameContext } from '../App';
 import { getBackgroundColor } from '../perception/perceptionMapper';
+import { RENDER_SCALE } from './renderScale';
 
 export function createPhaserGame(
   parent: HTMLElement,
@@ -12,8 +14,8 @@ export function createPhaserGame(
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent,
-    width: 800,
-    height: 600,
+    width: MAP_WIDTH * RENDER_SCALE,
+    height: MAP_HEIGHT * RENDER_SCALE,
     backgroundColor: `#${bg.toString(16).padStart(6, '0')}`,
     scale: {
       mode: Phaser.Scale.FIT,

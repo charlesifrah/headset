@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { RENDER_SCALE } from '../renderScale';
+import { GAME_FONT } from '../fonts';
 import type { PerceptionMode } from '@shared-field/shared';
 import { getZoneVisual, getZoneColorsSmooth } from '../../perception/perceptionMapper';
 
@@ -30,8 +32,9 @@ export class ZoneObject extends Phaser.GameObjects.Container {
     this.add(this.baseGfx);
 
     this.warningMarker = scene.add.text(0, this.radius + 14, '', {
+      resolution: RENDER_SCALE,
       fontSize: '16px',
-      fontFamily: 'sans-serif',
+      fontFamily: GAME_FONT,
       fontStyle: 'bold',
       color: '#fbbf24',
       align: 'center',

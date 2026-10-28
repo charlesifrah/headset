@@ -8,6 +8,8 @@ import { PlayerObject } from '../objects/Player';
 import { getSprayVisual, getBackgroundColor, getActionVerb } from '../../perception/perceptionMapper';
 import { VirtualJoystick } from '../input/VirtualJoystick';
 import { ActionButton } from '../input/ActionButton';
+import { RENDER_SCALE } from '../renderScale';
+import { GAME_FONT } from '../fonts';
 
 function isMobile(): boolean {
   return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(
@@ -60,6 +62,7 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     this.mobile = isMobile();
+    this.cameras.main.setOrigin(0, 0).setZoom(RENDER_SCALE);
     this.drawBackground();
 
     if (this.input.keyboard) {
@@ -157,8 +160,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     const text = this.add.text(MAP_WIDTH / 2, MAP_HEIGHT - 56, msg, {
+      resolution: RENDER_SCALE,
       fontSize: '15px',
-      fontFamily: 'sans-serif',
+      fontFamily: GAME_FONT,
       color: '#ffffff',
       align: 'center',
       wordWrap: { width: 410 },
@@ -541,8 +545,9 @@ export class GameScene extends Phaser.Scene {
     toast.setAlpha(0);
 
     const label = this.add.text(0, 0, entry.text, {
+      resolution: RENDER_SCALE,
       fontSize: '12px',
-      fontFamily: 'sans-serif',
+      fontFamily: GAME_FONT,
       fontStyle: 'bold',
       color: entry.color,
       align: 'center',

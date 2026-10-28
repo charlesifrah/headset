@@ -269,7 +269,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '12px 14px',
     borderRadius: 10,
     fontSize: 13,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontFamily: "'Space Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
     color: '#cbd5e1',
     border: '1px solid #334155',
     overflow: 'hidden',
@@ -327,6 +327,7 @@ const styles: Record<string, React.CSSProperties> = {
     opacity: 0.5,
   },
   code: {
+    fontFamily: "'Space Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: 32,
     fontWeight: 700,
     letterSpacing: 8,

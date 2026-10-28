@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { RENDER_SCALE } from '../renderScale';
+import { GAME_FONT } from '../fonts';
 import type { PerceptionMode } from '@shared-field/shared';
 import { PLAYER_RADIUS } from '@shared-field/shared';
 import { getSprayVisual } from '../../perception/perceptionMapper';
@@ -44,8 +46,9 @@ export class PlayerObject extends Phaser.GameObjects.Container {
 
     const tagText = isLocal ? 'You' : 'Partner';
     this.nameTag = scene.add.text(0, -PLAYER_RADIUS - 22, tagText, {
+      resolution: RENDER_SCALE,
       fontSize: '10px',
-      fontFamily: 'sans-serif',
+      fontFamily: GAME_FONT,
       fontStyle: 'bold',
       color: '#ffffff',
       align: 'center',

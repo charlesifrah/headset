@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import { MAP_WIDTH } from '@shared-field/shared';
+import { RENDER_SCALE } from '../renderScale';
+import { GAME_FONT } from '../fonts';
 
 export class ActionButton {
   private scene: Phaser.Scene;
@@ -23,7 +26,9 @@ export class ActionButton {
     this.graphics.setScrollFactor(0);
 
     this.label = scene.add.text(x, y, labelText, {
+      resolution: RENDER_SCALE,
       fontSize: '12px',
+      fontFamily: GAME_FONT,
       color: '#ffffff',
       align: 'center',
     });
@@ -34,7 +39,7 @@ export class ActionButton {
     this.draw();
 
     scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.x > scene.scale.width / 2 && this.hitTest(pointer.x, pointer.y)) {
+      if (pointer.worldX > MAP_WIDTH / 2 && this.hitTest(pointer.worldX, pointer.worldY)) {
         this._isPressed = true;
         this.draw();
         this.onPress?.();

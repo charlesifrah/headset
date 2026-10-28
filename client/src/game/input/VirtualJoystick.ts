@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { MAP_WIDTH } from '@shared-field/shared';
 
 export class VirtualJoystick {
   private scene: Phaser.Scene;
@@ -31,7 +32,7 @@ export class VirtualJoystick {
     this.drawThumb(x, y);
 
     scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.x < scene.scale.width / 2 && !this.active) {
+      if (pointer.worldX < MAP_WIDTH / 2 && !this.active) {
         this.active = true;
         this.pointerId = pointer.id;
       }
@@ -39,7 +40,7 @@ export class VirtualJoystick {
 
     scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (!this.active || pointer.id !== this.pointerId) return;
-      this.updateThumb(pointer.x, pointer.y);
+      this.updateThumb(pointer.worldX, pointer.worldY);
     });
 
     scene.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {

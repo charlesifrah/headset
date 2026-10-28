@@ -151,8 +151,9 @@ export function registerSocketHandlers(io: GameServer) {
       const room = rooms.get(roomId);
       if (!room || room.data.status !== 'ended') return;
 
+      // Only the requester: each player reveals at their own pace.
       const payload = room.buildRevealPayload();
-      io.to(roomId).emit('reveal_payload', payload);
+      socket.emit('reveal_payload', payload);
     });
 
     socket.on('disconnect', () => {

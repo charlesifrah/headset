@@ -3,6 +3,7 @@ import type { GameContext } from '../App';
 import type { RoundEndPayload, StateSnapshot, SnapshotZone } from '@shared-field/shared';
 import { socket } from '../socket';
 import { createPhaserGame } from '../game/PhaserGame';
+import { loadGameFonts } from '../game/fonts';
 import { GameHUD, deriveHud, hudEqual, type HudModel } from './GameHUD';
 import { ZoneCanvas } from './ZoneCanvas';
 
@@ -19,9 +20,16 @@ export function GameScreen({ gameCtx, onRoundEnd }: Props) {
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) return;
-    const game = createPhaserGame(containerRef.current, gameCtx);
-    gameRef.current = game;
-    return () => { game.destroy(true); gameRef.current = null; };
+    let cancelled = false;
+    loadGameFonts().then(() => {
+      if (cancelled || !containerRef.current) return;
+      gameRef.current = createPhaserGame(containerRef.current, gameCtx);
+    });
+    return () => {
+      cancelled = true;
+      gameRef.current?.destroy(true);
+      gameRef.current = null;
+    };
   }, [gameCtx]);
 
   useEffect(() => {
